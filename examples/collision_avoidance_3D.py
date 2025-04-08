@@ -173,3 +173,4 @@ print("Last time step shape:", last_time_step_result.shape)
 # print("Worst-case Disturbance for Adversary:", opt_w2)
 
 plot_isosurface(g, last_time_step_result, po)
+np.save("dp_value_function.npy", last_time_step_result)
