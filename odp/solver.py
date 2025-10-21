@@ -6,12 +6,13 @@ from odp.Plots import plot_isosurface, plot_valuefunction
 
 # Backward reachable set computation library
 from odp.computeGraphs import graph_1D, graph_2D, graph_3D, graph_4D, graph_5D, graph_6D
-from odp.TimeToReach import TTR_2D, TTR_3D, TTR_4D, TTR_5D 
+from odp.TimeToReach import TTR_2D, TTR_3D, TTR_4D, TTR_5D, TTR_6D
 
 # Value Iteration library
 from odp.valueIteration import value_iteration_2D, value_iteration_3D, value_iteration_4D, value_iteration_5D, value_iteration_6D
 
-def solveValueIteration(MDP_obj):
+def solveValueIteration(MDP_obj, grid, action_space,
+                        gamma=0.9, epsilon=1e-3, maxIters=1000):
     print("Welcome to optimized_dp \n")
     # Initialize the HCL environment
     hcl.init()
@@ -20,71 +21,51 @@ def solveValueIteration(MDP_obj):
     ########################################## INITIALIZE ##########################################
 
     # Convert the python array to hcl type array
-    V_opt = hcl.asarray(np.zeros(MDP_obj._ptsEachDim))
-    intermeds = hcl.asarray(np.ones(MDP_obj._actions.shape[0]))
-    trans = hcl.asarray(MDP_obj._trans)
-    gamma = hcl.asarray(MDP_obj._gamma)
-    epsilon = hcl.asarray(MDP_obj._epsilon)
-    count = hcl.asarray(np.zeros(1))
-    maxIters = hcl.asarray(MDP_obj._maxIters)
-    actions = hcl.asarray(MDP_obj._actions)
-    bounds = hcl.asarray(MDP_obj._bounds)
-    goal = hcl.asarray(MDP_obj._goal)
-    ptsEachDim = hcl.asarray(MDP_obj._ptsEachDim)
-    sVals = hcl.asarray(np.zeros([MDP_obj._bounds.shape[0]]))
-    iVals = hcl.asarray(np.zeros([MDP_obj._bounds.shape[0]]))
-    # interpV = hcl.asarray(np.zeros([1]))
-    # useNN = hcl.asarray(MDP_obj._useNN)
+    V_opt = hcl.asarray(np.zeros(grid.pts_each_dim))
+    
+    gamma = hcl.asarray(gamma)
+    actions = hcl.asarray(action_space)
 
-    # print(MDP_obj._bounds.shape[0])
-    # print(np.zeros([MDP_obj._bounds.shape[0]]))
-    if MDP_obj._bounds.shape[0] == 2:
-        # fillVal = hcl.asarray(MDP_obj._fillVal)
-        f = value_iteration_2D.value_iteration_2D(MDP_obj)
+    # Extract bounds from the grid object
+    bounds = np.vstack((grid.min, grid.max)).T
+    print(f"bounds is {bounds}")
+    bounds = hcl.asarray(bounds)
+    ptsEachDim = hcl.asarray(grid.pts_each_dim)
+    
+    if bounds.shape[0] == 2:
+        f = value_iteration_2D(MDP_obj, grid.pts_each_dim, bounds, action_space)
+    if bounds.shape[0] == 3:
+        f = value_iteration_3D(MDP_obj, grid.pts_each_dim, bounds, action_space)
+    if bounds.shape[0] == 4:
+        f = value_iteration_4D(MDP_obj, grid.pts_each_dim, bounds, action_space)
+    if bounds.shape[0] == 5:
+        f = value_iteration_5D(MDP_obj, grid.pts_each_dim, bounds, action_space)
+    if bounds.shape[0] == 6:
+        f = value_iteration_6D(MDP_obj, grid.pts_each_dim, bounds, action_space)
 
-    # if MDP_obj._bounds.shape[0] == 3:
-    #     fillVal = hcl.asarray(MDP_obj._fillVal)
-    #     f = value_iteration_3D(MDP_obj)
-    # if MDP_obj._bounds.shape[0] == 4:
-    #     f = value_iteration_4D(MDP_obj)
-    # if MDP_obj._bounds.shape[0] == 5:
-    #     f = value_iteration_5D(MDP_obj)
-    # if MDP_obj._bounds.shape[0] == 6:
-    #     f = value_iteration_6D(MDP_obj)
-
-    data_record = []
     # Build the graph and use the executable
     # Now use the executable
     t_s = time.time()
-    if MDP_obj._bounds.shape[0] == 2:
-        iter = 0
-        while iter < MDP_obj._maxIters:
-            print("Currently at iteration {}".format(iter))
-            oldV = V_opt.asnumpy()
-            f(V_opt, actions, intermeds, trans, gamma,
-               iVals, sVals, bounds, goal, ptsEachDim)
-            diff = np.max(np.abs(oldV - V_opt.asnumpy()))
-            print("Difference wrt to previous array {}".format(diff))
-            data_record.append((iter, diff ))
-            if diff < MDP_obj._epsilon:
-                break
-            iter += 1
-    else:
-        f(V_opt, actions, intermeds, trans, gamma, epsilon, iVals, sVals, bounds, goal, ptsEachDim, count,
-          maxIters)
+    iter = 0
+    while iter < maxIters:
+        print("Currently at iteration {}".format(iter))
+        oldV = V_opt.asnumpy()
+        f(V_opt, actions, gamma, bounds, ptsEachDim)
+        diff = np.max(np.abs(oldV - V_opt.asnumpy()))
+        print("Difference wrt to previous array {}".format(diff))
+        if diff < epsilon:
+            break
+        iter += 1
+    
     t_e = time.time()
-
     V = V_opt.asnumpy()
-    c = count.asnumpy()
-    print("Finished in ", int(c[0]), " iterations")
+    print(f"Finished in {iter} iterations")
     print("Took        ", t_e - t_s, " seconds")
-    np.save("pendulum_s{}_{}_a{}_no_alternate.npy".format(V.shape[0],
-                            V.shape[1], MDP_obj._actions.shape[0]), V)
-
+    
     return V
 
 def HJSolver(dynamics_obj, grid, multiple_value, tau, compMethod,
-             plot_option, saveAllTimeSteps=False,
+             saveAllTimeSteps=False,
              accuracy="medium", untilConvergent=False, epsilon=2e-3,
              computeTimeToReach=False):
 
@@ -124,6 +105,11 @@ def HJSolver(dynamics_obj, grid, multiple_value, tau, compMethod,
     V_t = hcl.asarray(init_value)
     Hamiltonian = hcl.asarray(np.zeros(tuple(grid.pts_each_dim)))
     delta_t = hcl.asarray(np.zeros(1))
+    
+    if computeTimeToReach:
+        # Indirect TTR computation
+        time_to_reach = np.ones(tuple(grid.pts_each_dim)) * 10000  # when attacker bound to win
+        time_to_reach[init_value <= 0] = 0.
     
     # Check which target set or initial value set
     if compMethod["TargetSetMode"] != "minVWithVTarget" and compMethod["TargetSetMode"] != "maxVWithVTarget":
@@ -185,9 +171,6 @@ def HJSolver(dynamics_obj, grid, multiple_value, tau, compMethod,
         valfuncs = np.zeros(np.insert(tuple(grid.pts_each_dim), grid.dims, len(tau)))
         valfuncs[..., -1 ] = V_t.asnumpy()
         print(valfuncs.shape)
-
-    time_to_reach = np.ones(tuple(grid.pts_each_dim)) * 10000  # when attacker bound to win
-    time_to_reach[init_value <= 0] = 0.
 
     ################ USE THE EXECUTABLE ############
     # Variables used for timing
@@ -292,6 +275,11 @@ def HJSolver(dynamics_obj, grid, multiple_value, tau, compMethod,
             # Increment the current time
             tNow += dt
             
+            if computeTimeToReach:
+                # Update the time to reach
+                update_idx = np.logical_and(V_tp1 <= 0, prev_arr > 0)
+                time_to_reach[update_idx] = tNow
+            
             # Calculate computation time
             execution_time += time.time() - start
 
@@ -299,9 +287,6 @@ def HJSolver(dynamics_obj, grid, multiple_value, tau, compMethod,
             print(np.array([tNow, tau[i]]))
             print("Computational time to integrate (s): {:.5f}".format(time.time() - start))
 
-            # Update the time to reach
-            update_idx = np.logical_and(V_tp1 <= 0, prev_arr > 0)
-            time_to_reach[update_idx] = tNow
             if untilConvergent is True:
                 # Compare difference between V_{t-1} and V_{t} and choose the max changes
                 diff = np.amax(np.abs(V_t.asnumpy() - prev_arr))
@@ -321,19 +306,6 @@ def HJSolver(dynamics_obj, grid, multiple_value, tau, compMethod,
     print("Finished solving\n")
 
     ##################### PLOTTING #####################
-    if plot_option.do_plot :
-        # Only plots last value array for now
-        if plot_option.plot_type == "set":
-            if saveAllTimeSteps is True:
-                plot_isosurface(grid, valfuncs, plot_option)
-            else:
-                plot_isosurface(grid, V_t.asnumpy(), plot_option)
-        elif plot_option.plot_type == "value":
-            if saveAllTimeSteps is True:
-                plot_valuefunction(grid, valfuncs, plot_option)
-            else:
-                plot_valuefunction(grid,V_t.asnumpy(), plot_option)
-
     if saveAllTimeSteps is True:
         valfuncs[..., 0] = V_t.asnumpy()
         if computeTimeToReach:
@@ -344,8 +316,8 @@ def HJSolver(dynamics_obj, grid, multiple_value, tau, compMethod,
         return V_t.asnumpy(), time_to_reach
     return V_t.asnumpy()
 
-def TTRSolver(dynamics_obj, grid, init_value, epsilon, plot_option):
-    print("Welcome to optimized_dp \n")
+def TTRSolver(dynamics_obj, grid, multiple_value, epsilon):
+    print("Welcome to optimized_dp TTRSolver \n")
     ################# INITIALIZE DATA TO BE INPUT INTO EXECUTABLE ##########################
 
     print("Initializing\n")
@@ -353,9 +325,31 @@ def TTRSolver(dynamics_obj, grid, init_value, epsilon, plot_option):
     hcl.config.init_dtype = hcl.Float(32)
 
     # Convert initial distance value function to initial time-to-reach value function
+    if type(multiple_value) == list:
+        # We have both goal and obstacle set
+        target = multiple_value[0] # Target set
+        obstacle = multiple_value[1] # Obstacle set
+    else:
+        target = multiple_value
+        obstacle = None
+        
+    if obstacle is None:
+        print("No obstacles set !")
+        obstacle = np.full(target.shape, -1)
+    else: 
+        print("Obstacles set exists !")
+        obstacle_dim = obstacle.ndim
+        assert obstacle_dim == grid.dims, "We only support TTR with time-invariant obstacles now."
+        obstacle = np.where(obstacle <= 0, 1000, 0)
+    
+    # Initial value function
+    init_value = target
     init_value[init_value < 0] = 0
     init_value[init_value > 0] = 1000
+    # Convert target and obstacle to heterocl syntax
+    constraint = hcl.asarray(obstacle)
     V_0 = hcl.asarray(init_value)
+    
     prev_val = np.zeros(init_value.shape)
 
     # Re-shape states vector
@@ -394,7 +388,9 @@ def TTRSolver(dynamics_obj, grid, init_value, epsilon, plot_option):
     if grid.dims == 4:
         solve_TTR = TTR_4D(dynamics_obj, grid)
     if grid.dims == 5:
+        print("Using TTR_5D")
         solve_TTR = TTR_5D(dynamics_obj, grid)
+        print(solve_TTR)
     if grid.dims == 6:
         solve_TTR = TTR_6D(dynamics_obj, grid)
     print("Got Executable\n")
@@ -412,29 +408,23 @@ def TTRSolver(dynamics_obj, grid, init_value, epsilon, plot_option):
         if grid.dims == 1:
             solve_TTR(V_0, list_x1)
         if grid.dims == 2:
-            solve_TTR(V_0, list_x1, list_x2)
+            solve_TTR(V_0, constraint, list_x1, list_x2)
         if grid.dims == 3:
-            solve_TTR(V_0, list_x1, list_x2, list_x3)
+            solve_TTR(V_0, constraint, list_x1, list_x2, list_x3)
         if grid.dims == 4:
-            solve_TTR(V_0, list_x1, list_x2, list_x3, list_x4)
+            solve_TTR(V_0, constraint, list_x1, list_x2, list_x3, list_x4)
         if grid.dims == 5:
-            solve_TTR(V_0, list_x1, list_x2, list_x3, list_x4, list_x5)
+            solve_TTR(V_0, constraint, list_x1, list_x2, list_x3, list_x4, list_x5)
         if grid.dims == 6:
-            solve_TTR(V_0, list_x1, list_x2, list_x3, list_x4, list_x5, list_x6 )
+            solve_TTR(V_0, constraint, list_x1, list_x2, list_x3, list_x4, list_x5, list_x6)
 
         error = np.max(np.abs(prev_val - V_0.asnumpy()))
         prev_val = V_0.asnumpy()
+                     
     print("Total TTR computation time (s): {:.5f}".format(time.time() - start))
     print("Finished solving\n")
 
     ##################### PLOTTING #####################
-    if plot_option.do_plot :
-        # Only plots last value array for now
-        if plot_option.plot_type == "set":
-            plot_isosurface(grid, V_0.asnumpy(), plot_option)
-        elif plot_option.plot_type == "value":
-            plot_valuefunction(grid, V_0.asnumpy(), plot_option)
-
     return V_0.asnumpy()
 
 def computeSpatDerivArray(grid, V, deriv_dim, accuracy="low"):
@@ -467,3 +457,4 @@ def computeSpatDerivArray(grid, V, deriv_dim, accuracy="low"):
 
     compute_SpatDeriv(V_0, spatial_deriv)
     return spatial_deriv.asnumpy()
+

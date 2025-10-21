@@ -279,7 +279,7 @@ def plot_valuefunction(grid, my_V, plot_option):
 
         my_X = np.linspace(grid.min[0], grid.max[0], grid.pts_each_dim[0])
         my_Y = np.linspace(grid.min[1], grid.max[1], grid.pts_each_dim[1])
-        my_V = my_V
+        my_V = my_V.T  # make the axes align with the values in plotting
 
         print("Plotting beautiful plots. Please wait\n")
         fig = go.Figure(data=go.Surface(
@@ -302,6 +302,7 @@ def plot_valuefunction(grid, my_V, plot_option):
         # dim1, dim2 = dims_plot[0], dims_plot[1]
         my_X = np.linspace(grid.min[0], grid.max[0], grid.pts_each_dim[0])
         my_Y = np.linspace(grid.min[1], grid.max[1], grid.pts_each_dim[1])
+        my_V = np.transpose(my_V, (1, 0, 2))  # make the axes align with the values in plotting
         N = my_V.shape[2]
 
         print("Plotting beautiful plots. Please wait\n")
@@ -550,4 +551,13 @@ def downsample(g, data, scale):
     g_out = Grid(grid_min, grid_max, g.dims, Ns)
 
     return g_out, data_out
+
+def visualize_plots(V, grid, plot_option):
+    if plot_option.do_plot :
+        # Only plots last value array for now
+        if plot_option.plot_type == "set":
+            plot_isosurface(grid, V, plot_option)
+        elif plot_option.plot_type == "value":
+            plot_valuefunction(grid, V, plot_option)
+    return
        
