@@ -140,7 +140,7 @@ po = PlotOptions(
     save_fig=True,
     filename="collision_avoidance_3d.png"
 )
-result = HJSolver(sys, g, Initial_value_f, tau, compMethod, po, saveAllTimeSteps=True)
+result = HJSolver(sys, g, Initial_value_f, tau, compMethod, saveAllTimeSteps=True)
 print("Result shape after solving:", result.shape)
 
 # Extract the value function at the last time step
