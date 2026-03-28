@@ -286,7 +286,6 @@ def graph_3D(my_object, g, compMethod, accuracy, generate_SpatDeriv=False, deriv
         s[s_H].parallel(s_H.i)
         s[s_D].parallel(s_D.i)
     else:
-        print("I'm here\n")
         s = hcl.create_schedule([V_init, V_f], returnDerivative)
 
     # Inspect IR

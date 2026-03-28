@@ -1,5 +1,18 @@
-import heterocl as hcl
 import numpy as np
+
+try:
+    import heterocl as hcl
+    HCL_AVAILABLE = True
+except ImportError:
+    hcl = None
+    HCL_AVAILABLE = False
+
+def _require_hcl(method_name):
+    if not HCL_AVAILABLE:
+        raise RuntimeError(
+            f"'{method_name}' requires heterocl, which is not available outside its conda environment. "
+            f"Use the '_inPython' variants instead."
+        )
 
 """ 3D DUBINS CAR DYNAMICS with 2 CONTROL INPUTS IMPLEMENTATION 
  x_dot = v * cos(theta)
@@ -22,6 +35,7 @@ class DubinsCar2:
         self.wMax = uMax[1]
 
     def opt_ctrl(self, t, state, spat_deriv):
+        _require_hcl("opt_ctrl")
         opt_w = hcl.scalar(self.wMax, "opt_w")
         opt_speed = hcl.scalar(self.speedMax, "opt_speed")
         # Just create and pass back, even though they're not used
@@ -47,6 +61,7 @@ class DubinsCar2:
         :param spat_deriv: tuple of spatial derivative in all dimensions
         :return: a tuple of optimal disturbances
         """
+        _require_hcl("opt_dstb")
         # Graph takes in 4 possible inputs, by default, for now
         d1 = hcl.scalar(0, "d1")
         d2 = hcl.scalar(0, "d2")
@@ -55,6 +70,7 @@ class DubinsCar2:
         return (d1[0], d2[0], d3[0])
 
     def dynamics(self, t, state, uOpt, dOpt):
+        _require_hcl("dynamics")
         x_dot = hcl.scalar(0, "x_dot")
         y_dot = hcl.scalar(0, "y_dot")
         theta_dot = hcl.scalar(0, "theta_dot")
