@@ -15,8 +15,29 @@ each (already-solved) subsystem value function is interpolated at that
 projection using the existing Grid.get_values API, and the max of the three
 results is returned. The reconstructed reachable set is {x : V(x) <= 0}.
 
-Run with: python3 reconstruct.py   (after running the 3 solve_subsystem_*.py
-scripts, which populate results/Vx.npy, Vy.npy, Vz.npy)
+IMPORTANT -- exactness depends on the control configuration (quad_config.py):
+
+  independent_control (|ux|<=ux_max, |uy|<=uy_max, |uz|<=uz_max): the
+      subsystems share no control or disturbance, so V = max(Vx,Vy,Vz) is the
+      EXACT value function of the coupled 10D system (Chen, Herbert & Tomlin,
+      arXiv:1611.00122).
+
+  shared_l2_control (ux^2+uy^2+uz^2 <= U_MAX^2): each subsystem was solved
+      using only its *projected* 1D interval [-U_MAX, U_MAX], as if it had
+      sole access to the full control budget. V = max(Vx,Vy,Vz) here is a
+      DECOMPOSED APPROXIMATION, NOT the exact value function: certifying
+      Vx<=0, Vy<=0, and Vz<=0 requires each subsystem to follow its own
+      independently-optimal (typically bang-bang) control simultaneously,
+      but those per-axis controls combined may violate the true L2 ball
+      (e.g. (U_MAX,U_MAX,U_MAX) satisfies the projected Cartesian product
+      but not the L2 constraint). This "leaking-corner" effect means the
+      reconstructed reachable set may be an OVER-approximation of the true
+      one -- it can include states that are not actually recoverable under
+      the true coupled constraint.
+
+Run with: python3 reconstruct.py [--config independent_control|shared_l2_control]
+(after running the 3 solve_subsystem_*.py scripts with the matching --config,
+which populate results/<config>/Vx.npy, Vy.npy, Vz.npy)
 """
 import os
 import sys
@@ -32,7 +53,7 @@ from quad_config import (
     GRID_MIN_Y, GRID_MAX_Y, GRID_N_Y,
     GRID_MIN_Z, GRID_MAX_Z, GRID_N_Z,
     IDX_X, IDX_Y, IDX_Z,
-    RESULTS_DIR,
+    CONTROL_CONFIGS, get_control_bounds, results_dir_for,
 )
 
 
@@ -40,9 +61,21 @@ class Quadrotor10DReconstructedValue:
     """
     V(x) = max(Vx(x1), Vy(x2), Vz(x3)) for the decomposed 10D quadrotor,
     evaluated on demand via interpolation -- no dense 10D array is ever built.
+
+    `self.exact` is True only for control configurations where the
+    subsystems share no control/disturbance (independent_control). For
+    shared_l2_control it is False: this reconstruction is a decomposed
+    APPROXIMATION of the coupled-control value function, subject to the
+    leaking-corner effect (see module docstring).
     """
 
-    def __init__(self, results_dir=RESULTS_DIR):
+    def __init__(self, config_name="independent_control"):
+        bounds = get_control_bounds(config_name)
+        self.config_name = config_name
+        self.exact = bounds["exact"]
+
+        results_dir = results_dir_for(config_name)
+
         self.grid_x = Grid(GRID_MIN_X, GRID_MAX_X, 4, GRID_N_X, [])
         self.grid_y = Grid(GRID_MIN_Y, GRID_MAX_Y, 4, GRID_N_Y, [])
         self.grid_z = Grid(GRID_MIN_Z, GRID_MAX_Z, 2, GRID_N_Z, [])
@@ -50,6 +83,10 @@ class Quadrotor10DReconstructedValue:
         self.Vx = np.load(os.path.join(results_dir, "Vx.npy"))
         self.Vy = np.load(os.path.join(results_dir, "Vy.npy"))
         self.Vz = np.load(os.path.join(results_dir, "Vz.npy"))
+
+        label = "EXACT" if self.exact else "APPROXIMATE (leaking-corner)"
+        print(f"[Quadrotor10DReconstructedValue] config={config_name!r} "
+              f"-> reconstructed value is {label}")
 
     @staticmethod
     def project(state_10d):
@@ -81,7 +118,15 @@ class Quadrotor10DReconstructedValue:
 
 
 if __name__ == "__main__":
-    recon = Quadrotor10DReconstructedValue()
+    import argparse
+
+    parser = argparse.ArgumentParser()
+    parser.add_argument(
+        "--config", choices=list(CONTROL_CONFIGS), default="independent_control",
+    )
+    args = parser.parse_args()
+
+    recon = Quadrotor10DReconstructedValue(args.config)
 
     hover = np.zeros(10)
     print("V(hover)              =", recon.value(hover),
